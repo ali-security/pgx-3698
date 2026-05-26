@@ -2070,6 +2070,29 @@ func TestConnQueryFuncAbort(t *testing.T) {
 	})
 }
 
+func TestConnQuerySanitizeSQLWithDollarQuotedStrings(t *testing.T) {
+	t.Parallel()
+
+	conn := mustConnectString(t, os.Getenv("PGX_TEST_DATABASE"))
+	defer closeConn(t, conn)
+
+	ctx := context.Background()
+
+	tx, err := conn.Begin(ctx)
+	require.NoError(t, err)
+	defer tx.Rollback(ctx)
+
+	_, err = tx.Exec(ctx, `create table canary(id text primary key)`)
+	require.NoError(t, err)
+
+	attackValue := `$tag$; drop table canary; --`
+	_, err = tx.Exec(ctx, `select $tag$ $1 $tag$, $1`, pgx.QuerySimpleProtocol(true), attackValue)
+	require.NoError(t, err)
+
+	_, err = tx.Exec(ctx, `select * from canary`)
+	require.NoError(t, err)
+}
+
 func ExampleConn_QueryFunc() {
 	conn, err := pgx.Connect(context.Background(), os.Getenv("PGX_TEST_DATABASE"))
 	if err != nil {
